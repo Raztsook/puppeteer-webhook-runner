@@ -20,11 +20,16 @@ app.get("/", async (req, res) => {
       ]
     });
 
-
     const page = await browser.newPage();
 
     await page.goto(url, { waitUntil: "networkidle2", timeout: 60000 });
-    await new Promise(resolve => setTimeout(resolve, 10000));
+
+    // אינטראקציה אנושית מדומה למשך 30 שניות
+    for (let i = 0; i < 30; i++) {
+      await page.mouse.move(100 + i * 5, 200 + i * 3);
+      await page.evaluate(() => window.scrollBy(0, 20));
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
 
     const webhookSent = await page.evaluate(() => {
       return [...document.querySelectorAll("span")].some(el =>
