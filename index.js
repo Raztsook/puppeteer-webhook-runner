@@ -22,20 +22,36 @@ app.get("/", async (req, res) => {
 
     const page = await browser.newPage();
 
-    // Inject localStorage token before loading the real page
-    await page.goto("about:blank");
+    // שלב 1: טען את הדף האמיתי, רק DOM בסיסי
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
+
+    // שלב 2: הזרק את הטוקן לדומיין הנכון
     await page.evaluate(() => {
       localStorage.setItem("token", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0c29va3JAZ21haWwuY29tIiwiZXhwIjoxNzQ2NTM3NDAwfQ.aDos9XIS74ylq79DP9JRIm6Xvl3H1hjaaCXbZ54XqPk");
     });
 
-    await page.goto(url, { waitUntil: "networkidle2", timeout: 60000 });
+    // שלב 3: טען מחדש את הדף כשה-token כבר קיים
+    await page.reload({ waitUntil: "networkidle2" });
 
-    // Simulate user interaction to trigger app logic
+    // אינטראקציה אנושית מדומה
     for (let i = 0; i < 30; i++) {
       await page.mouse.move(100 + i * 5, 200 + i * 3);
       await page.evaluate(() => window.scrollBy(0, 20));
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
+
+    // נסה להפעיל את הפונקציה בעצמך
+    const result = await page.evaluate(async () => {
+      if (typeof triggerWebhook === "function") {
+        try {
+          const res = await triggerWebhook();
+          return { manualTrigger: true, result: res };
+        } catch (err) {
+          return { manualTrigger: true, error: err.message };
+        }
+      }
+      return { manualTrigger: false };
+    });
 
     const webhookSent = await page.evaluate(() => {
       return [...document.querySelectorAll("span")].some(el =>
@@ -45,7 +61,7 @@ app.get("/", async (req, res) => {
 
     await browser.close();
 
-    res.status(200).json({ webhookSent });
+    res.status(200).json({ webhookSent, manualTrigger: result });
 
   } catch (err) {
     console.error(err);
