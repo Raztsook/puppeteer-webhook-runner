@@ -22,9 +22,15 @@ app.get("/", async (req, res) => {
 
     const page = await browser.newPage();
 
+    // Inject localStorage token before loading the real page
+    await page.goto("about:blank");
+    await page.evaluate(() => {
+      localStorage.setItem("token", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0c29va3JAZ21haWwuY29tIiwiZXhwIjoxNzQ2NTM3NDAwfQ.aDos9XIS74ylq79DP9JRIm6Xvl3H1hjaaCXbZ54XqPk");
+    });
+
     await page.goto(url, { waitUntil: "networkidle2", timeout: 60000 });
 
-    // אינטראקציה אנושית מדומה למשך 30 שניות
+    // Simulate user interaction to trigger app logic
     for (let i = 0; i < 30; i++) {
       await page.mouse.move(100 + i * 5, 200 + i * 3);
       await page.evaluate(() => window.scrollBy(0, 20));
