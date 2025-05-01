@@ -19,6 +19,9 @@ RUN apt-get update && apt-get install -y \
     libxdamage1 \
     libxrandr2 \
     xdg-utils \
+    libdrm2 \
+    libxshmfence1 \
+    libgbm1 \
     --no-install-recommends && \
     rm -rf /var/lib/apt/lists/*
 
