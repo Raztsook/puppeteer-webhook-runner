@@ -24,7 +24,7 @@ app.get("/", async (req, res) => {
     const page = await browser.newPage();
 
     await page.goto(url, { waitUntil: "networkidle2", timeout: 60000 });
-    await page.waitForTimeout(10000); // זמן שיאפשר ל-React ול-webhook לפעול
+    await new Promise(resolve => setTimeout(resolve, 10000));
 
     const webhookSent = await page.evaluate(() => {
       return [...document.querySelectorAll("span")].some(el =>
