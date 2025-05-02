@@ -1,23 +1,33 @@
-const puppeteer   = require('puppeteer-core');
-const chromium    = require('@sparticuz/chromium');
-const axios       = require('axios');
-const express     = require('express');
+const express   = require("express");
+const puppeteer  = require("puppeteer-core");
+const chromium   = require("@sparticuz/chromium");
+const axios      = require("axios");
 
 const { AIRTABLE_TOKEN, AIRTABLE_BASE_ID } = process.env;
-const TABLE = 'tokens';
-const app   = express();
+const TABLE = "tokens";
 
-app.get('/', async (req, res) => {
+const app = express();
+
+app.get("/", async (req, res) => {
+  const site = req.query.url || "https://app--training-space-e7c9cafa.base44.app";
+
+  if (!AIRTABLE_TOKEN || !AIRTABLE_BASE_ID) {
+    return res.status(500).send("Missing AIRTABLE_TOKEN or AIRTABLE_BASE_ID");
+  }
+
   try {
-    // ① טוקן אחרון מ-Airtable
-    const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${TABLE}` +
-                '?maxRecords=1&sort[0][field]=created&sort[0][direction]=desc';
+    /* ① שליפת הטוקן האחרון מ-Airtable */
+    const api   = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${TABLE}` +
+                  "?maxRecords=1&sort[0][field]=created&sort[0][direction]=desc";
 
-    const { data } = await axios.get(url, { headers:{ Authorization:`Bearer ${AIRTABLE_TOKEN}` }});
+    const { data } = await axios.get(api, {
+      headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` }
+    });
+
     const token = data.records?.[0]?.fields?.token;
-    if (!token) return res.status(400).send('no token in Airtable');
+    if (!token) return res.status(400).send("No token found in Airtable");
 
-    // ② דפדפן בענן
+    /* ② הפעלת Puppeteer בענן */
     const browser = await puppeteer.launch({
       args: chromium.args,
       executablePath: await chromium.executablePath(),
@@ -25,27 +35,46 @@ app.get('/', async (req, res) => {
     });
 
     const page = await browser.newPage();
-    await page.goto('about:blank');
-    await page.evaluate(tk => localStorage.setItem('token', tk), token);
 
-    const site = req.query.url || 'https://app--training-space-e7c9cafa.base44.app';
-    await page.goto(site, { waitUntil:'networkidle2' });
+    /* ③ הזרקת הטוקן לפני שכל סקריפט נטען */
+    await page.addInitScript(
+      (tk, origin) => {
+        if (location.origin === origin) {
+          try { localStorage.setItem("token", tk); } catch (_) {}
+        }
+      },
+      token,
+      new URL(site).origin
+    );
 
-    // ③ חכה לטקסט
-    let ok = false, t0 = Date.now();
-    while (Date.now() - t0 < 180000) {
-      ok = await page.evaluate(() => document.body.innerText.includes('Monthly summaries sent'));
-      if (ok) break;
+    /* ④ טעינת האתר */
+    await page.goto(site, { waitUntil: "networkidle2" });
+
+    /* ⑤ קביעת הטוקן שוב ורענון ליתר ביטחון */
+    await page.evaluate(tk => localStorage.setItem("token", tk), token);
+    await page.reload({ waitUntil: "networkidle2" });
+
+    /* ⑥ בדיקת הופעת הטקסט */
+    const start   = Date.now();
+    const maxWait = 180000;            // 3 דקות
+    let confirmed = false;
+
+    while (Date.now() - start < maxWait) {
+      confirmed = await page.evaluate(() =>
+        document.body.innerText.includes("Monthly summaries sent")
+      );
+      if (confirmed) break;
       await page.waitForTimeout(1000);
     }
 
     await browser.close();
-    res.json({ webhookConfirmed: ok });
-  } catch (e) {
-    console.error(e);
-    res.status(500).send(e.message);
+    res.json({ webhookConfirmed: confirmed });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).send(err.message);
   }
 });
 
 const port = process.env.PORT || 8080;
-app.listen(port, () => console.log('listening on', port));
+app.listen(port, () => console.log("Server listening on", port));
