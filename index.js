@@ -1,5 +1,6 @@
 const express = require("express");
-const puppeteer = require("puppeteer");
+const puppeteer = require("puppeteer-core");
+const chromium = require("@sparticuz/chromium");
 const axios = require("axios");
 
 const AIRTABLE_TOKEN = process.env.AIRTABLE_TOKEN;
@@ -13,56 +14,43 @@ app.get("/", async (req, res) => {
 
   console.log("➡️ התחלת בקשת HTTP");
   console.log("🌍 URL לטעינה:", url);
-  console.log("🔐 בדיקת משתני סביבה...");
+  console.log("🔐 משתני סביבה:");
   console.log("AIRTABLE_TOKEN:", AIRTABLE_TOKEN ? AIRTABLE_TOKEN.slice(0, 8) + "..." : "❌ לא מוגדר");
   console.log("AIRTABLE_BASE_ID:", AIRTABLE_BASE_ID || "❌ לא מוגדר");
 
   if (!AIRTABLE_TOKEN || !AIRTABLE_BASE_ID) {
-    return res.status(500).send("❌ Missing AIRTABLE_TOKEN or AIRTABLE_BASE_ID in environment variables.");
+    return res.status(500).send("❌ Missing AIRTABLE_TOKEN or AIRTABLE_BASE_ID.");
   }
 
   try {
-    // Step 1: Fetch latest token from Airtable
-    console.log("📡 מושך טוקן מ-Airtable...");
+    // Fetch latest token from Airtable
     const airtableUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_TABLE_NAME}?maxRecords=1&sort[0][field]=created&sort[0][direction]=desc`;
 
     const response = await axios.get(airtableUrl, {
       headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` }
     });
 
-    console.log("✅ תגובת Airtable:", JSON.stringify(response.data, null, 2));
-
     const token = response.data.records?.[0]?.fields?.token;
     if (!token) return res.status(400).send("❌ No token found in Airtable.");
 
-    // Step 2: Launch Puppeteer
-    console.log("🚀 מפעיל דפדפן Puppeteer...");
+    // Launch Puppeteer
     const browser = await puppeteer.launch({
-      headless: 'new',
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--single-process',
-        '--no-zygote'
-      ]
+      args: chromium.args,
+      executablePath: await chromium.executablePath(),
+      headless: chromium.headless
     });
 
     const page = await browser.newPage();
 
-    console.log("💾 מזריק טוקן ל-localStorage...");
     await page.goto("about:blank");
     await page.evaluate((tk) => {
       localStorage.setItem("token", tk);
     }, token);
 
-    // Step 3: Navigate to the site
-    console.log("🌐 טוען את הדף הראשי...");
+    // Navigate to main site
     await page.goto(url, { waitUntil: "networkidle2" });
 
-    // Step 4: Wait for webhook confirmation
-    console.log("⏳ ממתין ל-'Monthly summaries sent'...");
+    // Wait for confirmation
     let foundText = false;
     const maxWait = 180000;
     const start = Date.now();
@@ -78,8 +66,6 @@ app.get("/", async (req, res) => {
     }
 
     await browser.close();
-
-    console.log("✅ webhookConfirmed:", foundText);
     res.status(200).json({ webhookConfirmed: foundText });
 
   } catch (err) {
