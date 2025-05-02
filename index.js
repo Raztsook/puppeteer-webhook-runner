@@ -19,12 +19,15 @@ app.get("/", async (req, res) => {
       ]
     });
 
-    // Step 1: Open the page and wait for token
+    // Step 1: Load page and stimulate user activity
     const page = await browser.newPage();
     await page.goto(url, { waitUntil: "networkidle2", timeout: 60000 });
+    await page.mouse.move(150, 200);
+    await page.evaluate(() => window.scrollBy(0, 100));
 
+    // Step 2: Wait up to 30 seconds for token to appear
     let token = null;
-    const maxWait = 10000;
+    const maxWait = 30000;
     const start = Date.now();
     while (!token && Date.now() - start < maxWait) {
       token = await page.evaluate(() => localStorage.getItem("token"));
@@ -36,16 +39,16 @@ app.get("/", async (req, res) => {
       return res.status(400).send("❌ Token not found in localStorage.");
     }
 
-    // Step 2: Open a new tab and inject token
+    // Step 3: Open a new tab, inject token, load dashboard
     const page2 = await browser.newPage();
     await page2.goto("about:blank");
     await page2.evaluate((tk) => {
       localStorage.setItem("token", tk);
     }, token);
 
-    // Step 3: Load dashboard and wait for confirmation
     await page2.goto(url, { waitUntil: "networkidle2" });
 
+    // Step 4: Wait for webhook confirmation
     let foundText = false;
     const maxWaitTimeMs = 3 * 60 * 1000;
     const intervalMs = 1000;
