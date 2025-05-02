@@ -32,14 +32,26 @@ app.get("/", async (req, res) => {
 
     await page.reload({ waitUntil: "networkidle2" });
 
-    for (let i = 0; i < 30; i++) {
-      await page.mouse.move(100 + i * 5, 200 + i * 3);
+    // המתן עד שיופיע טקסט המעיד על שליחת ה-webhook
+    let foundText = false;
+    const maxWaitTimeMs = 3 * 60 * 1000; // עד 3 דקות
+    const intervalMs = 1000;
+    const start = Date.now();
+
+    while (Date.now() - start < maxWaitTimeMs) {
+      const text = await page.evaluate(() => document.body.innerText);
+      if (text.includes("Monthly summaries sent")) {
+        foundText = true;
+        break;
+      }
+
+      await page.mouse.move(100 + Math.random() * 50, 200 + Math.random() * 50);
       await page.evaluate(() => window.scrollBy(0, 20));
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, intervalMs));
     }
 
     await browser.close();
-    res.status(200).send("✅ Webhook flow simulated successfully");
+    res.status(200).json({ webhookConfirmed: foundText });
 
   } catch (err) {
     console.error(err);
