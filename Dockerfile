@@ -1,6 +1,7 @@
+# Use the official Node.js 20 slim image
 FROM node:20-slim
 
-# תוספות שדרושות בשביל Puppeteer לעבוד בענן
+# Install necessary dependencies for Chromium to run
 RUN apt-get update && apt-get install -y \
     wget \
     ca-certificates \
@@ -18,25 +19,29 @@ RUN apt-get update && apt-get install -y \
     libxcomposite1 \
     libxdamage1 \
     libxrandr2 \
-    xdg-utils \
-    libu2f-udev \
-    libvulkan1 \
-    libxss1 \
-    libnss3-tools \
     libxshmfence1 \
-    libxfixes3 \
-    --no-install-recommends \
- && apt-get clean \
- && rm -rf /var/lib/apt/lists/*
+    libxss1 \
+    libxtst6 \
+    xdg-utils \
+    --no-install-recommends && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# העתקת קבצים והתקנת תלויות
+# Create app directory
 WORKDIR /app
+
+# Copy package.json and install dependencies
 COPY package*.json ./
 RUN npm install
+
+# Copy the rest of the app code
 COPY . .
 
-# האפליקציה מאזינה על הפורט הזה
+# Set environment variables for Puppeteer
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PORT=8080
 
-# הפקודה שתפעיל את השרת
-CMD ["npm", "start"]
+# Expose Cloud Run expected port
+EXPOSE 8080
+
+# Start the Node.js server
+CMD ["node", "index.js"]
