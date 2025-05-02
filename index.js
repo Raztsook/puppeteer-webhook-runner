@@ -1,79 +1,51 @@
-const express = require("express");
-const puppeteer = require("puppeteer");
-const axios = require("axios");
+const puppeteer   = require('puppeteer-core');
+const chromium    = require('@sparticuz/chromium');
+const axios       = require('axios');
+const express     = require('express');
 
-const AIRTABLE_TOKEN = process.env.AIRTABLE_TOKEN;
-const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID;
-const AIRTABLE_TABLE_NAME = "tokens";
+const { AIRTABLE_TOKEN, AIRTABLE_BASE_ID } = process.env;
+const TABLE = 'tokens';
+const app   = express();
 
-const app = express();
-
-app.get("/", async (req, res) => {
-  const url = req.query.url || "https://app--training-space-e7c9cafa.base44.app";
-
-  console.log("➡️ התחלת בקשת HTTP");
-  console.log("🌍 URL לטעינה:", url);
-  console.log("🔐 בדיקת משתני סביבה...");
-  console.log("AIRTABLE_TOKEN:", AIRTABLE_TOKEN ? AIRTABLE_TOKEN.slice(0, 8) + "..." : "❌ לא מוגדר");
-  console.log("AIRTABLE_BASE_ID:", AIRTABLE_BASE_ID || "❌ לא מוגדר");
-
-  if (!AIRTABLE_TOKEN || !AIRTABLE_BASE_ID) {
-    return res.status(500).send("❌ Missing AIRTABLE_TOKEN or AIRTABLE_BASE_ID in environment variables.");
-  }
-
+app.get('/', async (req, res) => {
   try {
-    const airtableUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_TABLE_NAME}?maxRecords=1&sort[0][field]=created&sort[0][direction]=desc`;
-    const response = await axios.get(airtableUrl, {
-      headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` }
-    });
+    // ① טוקן אחרון מ-Airtable
+    const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${TABLE}` +
+                '?maxRecords=1&sort[0][field]=created&sort[0][direction]=desc';
 
-    console.log("✅ תגובת Airtable:", JSON.stringify(response.data, null, 2));
+    const { data } = await axios.get(url, { headers:{ Authorization:`Bearer ${AIRTABLE_TOKEN}` }});
+    const token = data.records?.[0]?.fields?.token;
+    if (!token) return res.status(400).send('no token in Airtable');
 
-    const token = response.data.records?.[0]?.fields?.token;
-    if (!token) return res.status(400).send("❌ No token found in Airtable.");
-
+    // ② דפדפן בענן
     const browser = await puppeteer.launch({
-      headless: 'new',
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--single-process',
-        '--no-zygote'
-      ]
+      args: chromium.args,
+      executablePath: await chromium.executablePath(),
+      headless: chromium.headless
     });
 
     const page = await browser.newPage();
-    await page.goto("about:blank");
-    await page.evaluate((tk) => {
-      localStorage.setItem("token", tk);
-    }, token);
+    await page.goto('about:blank');
+    await page.evaluate(tk => localStorage.setItem('token', tk), token);
 
-    await page.goto(url, { waitUntil: "networkidle2" });
+    const site = req.query.url || 'https://app--training-space-e7c9cafa.base44.app';
+    await page.goto(site, { waitUntil:'networkidle2' });
 
-    let foundText = false;
-    const maxWait = 180000;
-    const start = Date.now();
-    while (Date.now() - start < maxWait) {
-      const text = await page.evaluate(() => document.body.innerText);
-      if (text.includes("Monthly summaries sent")) {
-        foundText = true;
-        break;
-      }
-      await page.mouse.move(100 + Math.random() * 50, 200 + Math.random() * 50);
-      await page.evaluate(() => window.scrollBy(0, 20));
-      await new Promise(resolve => setTimeout(resolve, 1000));
+    // ③ חכה לטקסט
+    let ok = false, t0 = Date.now();
+    while (Date.now() - t0 < 180000) {
+      ok = await page.evaluate(() => document.body.innerText.includes('Monthly summaries sent'));
+      if (ok) break;
+      await page.waitForTimeout(1000);
     }
 
     await browser.close();
-    res.status(200).json({ webhookConfirmed: foundText });
-
-  } catch (err) {
-    console.error("❌ שגיאה כללית:", err.message);
-    res.status(500).send("Error: " + err.message);
+    res.json({ webhookConfirmed: ok });
+  } catch (e) {
+    console.error(e);
+    res.status(500).send(e.message);
   }
 });
 
 const port = process.env.PORT || 8080;
-app.listen(port, () => console.log("✅ Server listening on port", port));
+app.listen(port, () => console.log('listening on', port));
