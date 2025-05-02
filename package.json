@@ -1,5 +1,5 @@
 {
-  "name": "puppeteer-cloudrun-keepalive",
+  "name": "puppeteer-cloudrun-auto-token",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
