@@ -23,7 +23,6 @@ app.get("/", async (req, res) => {
 
   try {
     const airtableUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_TABLE_NAME}?maxRecords=1&sort[0][field]=created&sort[0][direction]=desc`;
-
     const response = await axios.get(airtableUrl, {
       headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` }
     });
@@ -46,17 +45,13 @@ app.get("/", async (req, res) => {
     });
 
     const page = await browser.newPage();
-
-    console.log("💾 מזריק טוקן ל-localStorage...");
     await page.goto("about:blank");
     await page.evaluate((tk) => {
       localStorage.setItem("token", tk);
     }, token);
 
-    console.log("🌐 טוען את הדף הראשי...");
     await page.goto(url, { waitUntil: "networkidle2" });
 
-    console.log("⏳ ממתין ל-'Monthly summaries sent'...");
     let foundText = false;
     const maxWait = 180000;
     const start = Date.now();
@@ -72,8 +67,6 @@ app.get("/", async (req, res) => {
     }
 
     await browser.close();
-
-    console.log("✅ webhookConfirmed:", foundText);
     res.status(200).json({ webhookConfirmed: foundText });
 
   } catch (err) {
