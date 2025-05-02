@@ -19,33 +19,39 @@ app.get("/", async (req, res) => {
       ]
     });
 
+    // Step 1: Open the page and wait for token
     const page = await browser.newPage();
-
     await page.goto(url, { waitUntil: "networkidle2", timeout: 60000 });
 
-    const token = await page.evaluate(() => {
-      return localStorage.getItem("token");
-    });
+    let token = null;
+    const maxWait = 10000;
+    const start = Date.now();
+    while (!token && Date.now() - start < maxWait) {
+      token = await page.evaluate(() => localStorage.getItem("token"));
+      if (!token) await new Promise(r => setTimeout(r, 500));
+    }
 
     if (!token) {
       await browser.close();
-      return res.status(400).send("No token found in localStorage");
+      return res.status(400).send("❌ Token not found in localStorage.");
     }
 
+    // Step 2: Open a new tab and inject token
     const page2 = await browser.newPage();
     await page2.goto("about:blank");
     await page2.evaluate((tk) => {
       localStorage.setItem("token", tk);
     }, token);
 
+    // Step 3: Load dashboard and wait for confirmation
     await page2.goto(url, { waitUntil: "networkidle2" });
 
     let foundText = false;
     const maxWaitTimeMs = 3 * 60 * 1000;
     const intervalMs = 1000;
-    const start = Date.now();
+    const begin = Date.now();
 
-    while (Date.now() - start < maxWaitTimeMs) {
+    while (Date.now() - begin < maxWaitTimeMs) {
       const text = await page2.evaluate(() => document.body.innerText);
       if (text.includes("Monthly summaries sent")) {
         foundText = true;
@@ -61,7 +67,7 @@ app.get("/", async (req, res) => {
 
   } catch (err) {
     console.error(err);
-    res.status(500).send("Error running browser: " + err.message);
+    res.status(500).send("Error: " + err.message);
   }
 });
 
