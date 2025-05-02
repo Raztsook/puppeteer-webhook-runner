@@ -11,17 +11,32 @@ const app = express();
 app.get("/", async (req, res) => {
   const url = req.query.url || "https://app--training-space-e7c9cafa.base44.app";
 
+  console.log("➡️ התחלת בקשת HTTP");
+  console.log("🌍 URL לטעינה:", url);
+  console.log("🔐 בדיקת משתני סביבה...");
+  console.log("AIRTABLE_TOKEN:", AIRTABLE_TOKEN ? AIRTABLE_TOKEN.slice(0, 8) + "..." : "❌ לא מוגדר");
+  console.log("AIRTABLE_BASE_ID:", AIRTABLE_BASE_ID || "❌ לא מוגדר");
+
+  if (!AIRTABLE_TOKEN || !AIRTABLE_BASE_ID) {
+    return res.status(500).send("❌ Missing AIRTABLE_TOKEN or AIRTABLE_BASE_ID in environment variables.");
+  }
+
   try {
     // Step 1: Fetch latest token from Airtable
-    const airtableUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_TABLE_NAME}?maxRecords=1&sort%5B0%5D%5Bfield%5D=created&sort%5B0%5D%5Bdirection%5D=desc`;
+    console.log("📡 מושך טוקן מ-Airtable...");
+    const airtableUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_TABLE_NAME}?maxRecords=1&sort[0][field]=created&sort[0][direction]=desc`;
+
     const response = await axios.get(airtableUrl, {
       headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` }
     });
-    const token = response.data.records[0].fields.token;
 
+    console.log("✅ תגובת Airtable:", JSON.stringify(response.data, null, 2));
+
+    const token = response.data.records?.[0]?.fields?.token;
     if (!token) return res.status(400).send("❌ No token found in Airtable.");
 
     // Step 2: Launch Puppeteer
+    console.log("🚀 מפעיל דפדפן Puppeteer...");
     const browser = await puppeteer.launch({
       headless: 'new',
       args: [
@@ -35,15 +50,19 @@ app.get("/", async (req, res) => {
     });
 
     const page = await browser.newPage();
+
+    console.log("💾 מזריק טוקן ל-localStorage...");
     await page.goto("about:blank");
     await page.evaluate((tk) => {
       localStorage.setItem("token", tk);
     }, token);
 
     // Step 3: Navigate to the site
+    console.log("🌐 טוען את הדף הראשי...");
     await page.goto(url, { waitUntil: "networkidle2" });
 
     // Step 4: Wait for webhook confirmation
+    console.log("⏳ ממתין ל-'Monthly summaries sent'...");
     let foundText = false;
     const maxWait = 180000;
     const start = Date.now();
@@ -59,13 +78,15 @@ app.get("/", async (req, res) => {
     }
 
     await browser.close();
+
+    console.log("✅ webhookConfirmed:", foundText);
     res.status(200).json({ webhookConfirmed: foundText });
 
   } catch (err) {
-    console.error(err);
+    console.error("❌ שגיאה כללית:", err.message);
     res.status(500).send("Error: " + err.message);
   }
 });
 
 const port = process.env.PORT || 8080;
-app.listen(port, () => console.log("Listening on port", port));
+app.listen(port, () => console.log("✅ Server listening on port", port));
