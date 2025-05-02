@@ -5,9 +5,6 @@ const app = express();
 
 app.get("/", async (req, res) => {
   const url = req.query.url || "https://app--training-space-e7c9cafa.base44.app";
-  const token = req.query.token;
-
-  if (!token) return res.status(400).send("Missing ?token= parameter");
 
   try {
     const browser = await puppeteer.launch({
@@ -24,29 +21,38 @@ app.get("/", async (req, res) => {
 
     const page = await browser.newPage();
 
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
+    await page.goto(url, { waitUntil: "networkidle2", timeout: 60000 });
 
-    await page.evaluate((tk) => {
+    const token = await page.evaluate(() => {
+      return localStorage.getItem("token");
+    });
+
+    if (!token) {
+      await browser.close();
+      return res.status(400).send("No token found in localStorage");
+    }
+
+    const page2 = await browser.newPage();
+    await page2.goto("about:blank");
+    await page2.evaluate((tk) => {
       localStorage.setItem("token", tk);
     }, token);
 
-    await page.reload({ waitUntil: "networkidle2" });
+    await page2.goto(url, { waitUntil: "networkidle2" });
 
-    // המתן עד שיופיע טקסט המעיד על שליחת ה-webhook
     let foundText = false;
-    const maxWaitTimeMs = 3 * 60 * 1000; // עד 3 דקות
+    const maxWaitTimeMs = 3 * 60 * 1000;
     const intervalMs = 1000;
     const start = Date.now();
 
     while (Date.now() - start < maxWaitTimeMs) {
-      const text = await page.evaluate(() => document.body.innerText);
+      const text = await page2.evaluate(() => document.body.innerText);
       if (text.includes("Monthly summaries sent")) {
         foundText = true;
         break;
       }
-
-      await page.mouse.move(100 + Math.random() * 50, 200 + Math.random() * 50);
-      await page.evaluate(() => window.scrollBy(0, 20));
+      await page2.mouse.move(100 + Math.random() * 50, 200 + Math.random() * 50);
+      await page2.evaluate(() => window.scrollBy(0, 20));
       await new Promise(resolve => setTimeout(resolve, intervalMs));
     }
 
